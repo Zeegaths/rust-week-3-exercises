@@ -15,10 +15,33 @@ pub enum BitcoinError {
 
 impl CompactSize {
     pub fn new(value: u64) -> Self {
+        return CompactSize{value};
         // TODO: Construct a CompactSize from a u64 value
     }
+    
 
     pub fn to_bytes(&self) -> Vec<u8> {
+        match self.value {
+            0x00..=0xFC => vec![self.value as u8],
+
+            0xFD..=0xFFFF => {
+                let mut bytes = vec![0xFD];
+                bytes.extend_from_slice(&(self.value as u16).to_le_bytes());
+                bytes
+            }
+            
+            0x10000..=0xFFFFFFFF => {
+                let mut bytes = vec![0xFE];
+                bytes.extend_from_slice(&(self.value as u32).to_le_bytes());
+                bytes
+            }
+
+            _ => {
+                let mut bytes = vec![0xFE];
+                bytes.extend_from_slice(&(self.value as u32).to_le_bytes());
+                bytes
+            }
+        }
         // TODO: Encode according to Bitcoin's CompactSize format:
         // [0x00–0xFC] => 1 byte
         // [0xFDxxxx] => 0xFD + u16 (2 bytes)
@@ -27,6 +50,27 @@ impl CompactSize {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        if bytes.is_empty() {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+
+        match bytes[0] {
+            0x00..=0xFC => {
+                0k((CompactSize::new(bytes[0] as u64), 1))
+            }
+
+            0xFD => {
+                if bytes,len() < 3 {
+                    return Err(BitcoinError::InsufficientBytes);
+                }
+                let value = u16::from_le_bytes([bytes[1], bytes[2]]) as u64;
+                if value < 0xFD {
+                    return Err(BitcoinError::InvalidFormat);
+                }
+                
+                Ok((CompactSize::new(value), 3))
+            }
+        }
         // TODO: Decode CompactSize, returning value and number of bytes consumed.
         // First check if bytes is empty.
         // Check that enough bytes are available based on prefix.
