@@ -56,11 +56,11 @@ impl CompactSize {
 
         match bytes[0] {
             0x00..=0xFC => {
-                0k((CompactSize::new(bytes[0] as u64), 1))
+                Ok((CompactSize::new(bytes[0] as u64), 1))
             }
 
             0xFD => {
-                if bytes,len() < 3 {
+                if bytes.len() < 3 {
                     return Err(BitcoinError::InsufficientBytes);
                 }
                 let value = u16::from_le_bytes([bytes[1], bytes[2]]) as u64;
@@ -69,6 +69,30 @@ impl CompactSize {
                 }
                 
                 Ok((CompactSize::new(value), 3))
+            }
+
+            0xFE => {
+                if bytes.len() < 5 {
+                    return Err(BitcoinError:: InsufficientBytes);
+                }
+                let value = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as u64;
+                if value < 65536 {
+                    return Err(BitcoinError::InvalidFormat);
+                }
+                Ok((CompactSize::new(value), 5))
+            }
+
+            0xFF => {
+                if bytes.len() < 9 {
+                    return Err(BitcoinError::InsufficientBytes);
+                }
+                let value = u64::from_le_bytes([
+                    bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8]
+                ]);
+                if value < 4294967296 {
+                    return Err(BitcoinError::InvalidFormat);
+                }
+                Ok((CompactSize::new(value), 9))
             }
         }
         // TODO: Decode CompactSize, returning value and number of bytes consumed.
@@ -85,6 +109,8 @@ impl Serialize for Txid {
     where
         S: serde::Serializer,
     {
+        let hex_string = hex::encode(&self.0);
+        serializer.serialize_str(&hex_string)
         // TODO: Serialize as a hex-encoded string (32 bytes => 64 hex characters)
     }
 }
@@ -94,8 +120,24 @@ impl<'de> Deserialize<'de> for Txid {
     where
         D: serde::Deserializer<'de>,
     {
+        let hex_string = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&hex_string)
+            .map_err(|e| serde::de::Error::custom(format!("Invalid hex string: {}", e)))?;
+
+        if bytes.len() != 32 {
+            return Err(serde::de::Error::custom(format!(
+                "Expected 32 bytes, got {}",
+                bytes.len()
+            )));
+        }
+
+        let mut array = [0u8; 32];
+        array.copy_from_slice(&bytes);
+
+        Ok(Txid(array))
         // TODO: Parse hex string into 32-byte array
         // Use `hex::decode`, validate length = 32
+        
     }
 }
 
@@ -107,14 +149,44 @@ pub struct OutPoint {
 
 impl OutPoint {
     pub fn new(txid: [u8; 32], vout: u32) -> Self {
+        Self {
+            txid: Txid(txid),
+            vout,
+        }
+       
         // TODO: Create an OutPoint from raw txid bytes and output index
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(36);   
+    
+        bytes.extend_from_slice(&self.txid.0);   
+  
+        bytes.extend_from_slice(&self.vout.to_le_bytes());
+    
+        bytes
         // TODO: Serialize as: txid (32 bytes) + vout (4 bytes, little-endian)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        if bytes.len() < 36 {
+        return Err(BitcoinError::InsufficientBytes)
+          
+    }
+    let mut txid = [0u8; 32];
+    txid.copy_from_slice(&bytes[0..32]);
+
+    let vout_bytes = &bytes[32..36];
+    let vout = u32::from_le_bytes([
+        vout_bytes[0],
+        vout_bytes[1], 
+        vout_bytes[2],
+        vout_bytes[3]
+    ]);
+    
+    let outpoint = Self { txid:Txid(txid), vout };
+    Ok((outpoint, 36))
+    
         // TODO: Deserialize 36 bytes: txid[0..32], vout[32..36]
         // Return error if insufficient bytes
     }
@@ -127,10 +199,14 @@ pub struct Script {
 
 impl Script {
     pub fn new(bytes: Vec<u8>) -> Self {
+        Self{
+            bytes
+        }
         // TODO: Simple constructor
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
+         let mut result = Vec::new();
         // TODO: Prefix with CompactSize (length), then raw bytes
     }
 
