@@ -232,6 +232,11 @@ pub struct TransactionInput {
 
 impl TransactionInput {
     pub fn new(previous_output: OutPoint, script_sig: Script, sequence: u32) -> Self {
+        Self {
+            previous_output,
+            script_sig,
+            sequence
+        }
         // TODO: Basic constructor
     }
 
@@ -256,6 +261,11 @@ pub struct BitcoinTransaction {
 
 impl BitcoinTransaction {
     pub fn new(version: u32, inputs: Vec<TransactionInput>, lock_time: u32) -> Self {
+        Self {
+            version,
+            inputs,
+            lock_time
+        }
         // TODO: Construct a transaction from parts
     }
 
