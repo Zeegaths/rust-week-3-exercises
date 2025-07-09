@@ -207,10 +207,25 @@ impl Script {
 
     pub fn to_bytes(&self) -> Vec<u8> {
          let mut result = Vec::new();
+         let length = CompactSize::new(self.bytes.len() as u64);
+         result.extend_from_slice(&length.to_bytes());
+         result.extend_from_slice(&self.bytes);
+         result
         // TODO: Prefix with CompactSize (length), then raw bytes
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        let (length, bytes_consumed) = CompactSize::from_bytes(bytes)?;
+        let script_length = length.value as usize;
+
+        if bytes.len() < bytes_consumed + script_length {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+
+        let script_bytes = bytes[bytes_consumed..bytes_consumed + script_length].to_vec();
+        let script = Script::new(script_bytes);
+
+        Ok((script, bytes_consumed + script_length))
         // TODO: Parse CompactSize prefix, then read that many bytes
         // Return error if not enough bytes
     }
@@ -219,6 +234,7 @@ impl Script {
 impl Deref for Script {
     type Target = Vec<u8>;
     fn deref(&self) -> &Self::Target {
+        &self.bytes
         // TODO: Allow &Script to be used as &[u8]
     }
 }
@@ -241,10 +257,38 @@ impl TransactionInput {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&self.previous_output.to_bytes());
+        bytes.extend_from_slice(&self.script_sig.to_bytes());
+        bytes.extend_from_slice(&self.sequence.to_le_bytes());
+        bytes
         // TODO: Serialize: OutPoint + Script (with CompactSize) + sequence (4 bytes LE)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        let mut offset = 0;
+
+        let (previous_output, outpoint_size) = OutPoint::from_bytes(&bytes[offset..])?;
+        offset += outpoint_size;
+
+        let (script_sig, script_size) = Script::from_bytes(&bytes[offset..])?;
+        offset += script_size;
+
+        if bytes.len() < offset + 4 {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+
+        let sequence = u32::from_le_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ]);
+        offset += 4;
+
+        let input = TransactionInput::new(previous_output, script_sig, sequence);
+        Ok((input, offset))
+     
         // TODO: Deserialize in order:
         // - OutPoint (36 bytes)
         // - Script (with CompactSize)
