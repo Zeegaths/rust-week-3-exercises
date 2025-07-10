@@ -22,23 +22,23 @@ impl CompactSize {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         match self.value {
-            0x00..=0xFC => vec![self.value as u8],
+            0..=252 => vec![self.value as u8],
 
-            0xFD..=0xFFFF => {
+            253..=65535 => {
                 let mut bytes = vec![0xFD];
                 bytes.extend_from_slice(&(self.value as u16).to_le_bytes());
                 bytes
             }
             
-            0x10000..=0xFFFFFFFF => {
+            65536..=4294967295 => {
                 let mut bytes = vec![0xFE];
                 bytes.extend_from_slice(&(self.value as u32).to_le_bytes());
                 bytes
             }
 
             _ => {
-                let mut bytes = vec![0xFE];
-                bytes.extend_from_slice(&(self.value as u32).to_le_bytes());
+                let mut bytes = vec![0xFF];
+                bytes.extend_from_slice(&self.value.to_le_bytes());
                 bytes
             }
         }
@@ -314,6 +314,19 @@ impl BitcoinTransaction {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&self.version.to_le_bytes());
+
+        let input_count = CompactSize::new(self.inputs.len() as u64);
+        bytes.extend_from_slice(&input_count.to_bytes());
+
+        for input in &self.inputs {
+            bytes.extend_from_slice(&input.to_bytes());
+        }
+
+        bytes.extend_from_slice(&self.lock_time.to_le_bytes());
+        bytes
         // TODO: Format:
         // - version (4 bytes LE)
         // - CompactSize (number of inputs)
@@ -322,6 +335,37 @@ impl BitcoinTransaction {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        let mut offset = 0;
+
+        if bytes.len() < 4 {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+        let version = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        offset += 4;
+
+        let (input_count, count_size) = CompactSize::from_bytes(&bytes[offset..])?;
+        offset += count_size;
+
+        let mut inputs = Vec::new();
+        for _ in 0..input_count.value {
+            let (input, input_size) = TransactionInput::from_bytes(&bytes[offset..])?;
+            inputs.push(input);
+            offset += input_size;
+        }
+
+        if bytes.len() < offset + 4 {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+        let lock_time = u32::from_le_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ]);
+        offset += 4;
+        let transaction = BitcoinTransaction::new(version, inputs, lock_time);
+        Ok((transaction, offset))
+
         // TODO: Read version, CompactSize for input count
         // Parse inputs one by one
         // Read final 4 bytes for lock_time
@@ -330,6 +374,24 @@ impl BitcoinTransaction {
 
 impl fmt::Display for BitcoinTransaction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Bitcoin Transaction:")?;
+        writeln!(f, "  Version: {}", self.version)?;
+        writeln!(f, "  Inputs ({}):", self.inputs.len())?;
+        
+        for (i, input) in self.inputs.iter().enumerate() {
+            writeln!(f, "    Input {}:", i)?;
+            writeln!(f, "      Previous Output:")?;
+            writeln!(f, "        TXID: {}", hex::encode(&input.previous_output.txid.0))?;
+            writeln!(f, "        Previous Output Vout: {}", input.previous_output.vout)?;
+            writeln!(f, "      Script Sig ({} bytes): {}", 
+                input.script_sig.bytes.len(), 
+                hex::encode(&input.script_sig.bytes))?;
+            writeln!(f, "      Sequence: 0x{:08x}", input.sequence)?;
+        }
+        
+        writeln!(f, "  Lock Time: {}", self.lock_time)?;
+        
+        Ok(())
         // TODO: Format a user-friendly string showing version, inputs, lock_time
         // Display scriptSig length and bytes, and previous output info
     }
