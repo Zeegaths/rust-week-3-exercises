@@ -15,10 +15,9 @@ pub enum BitcoinError {
 
 impl CompactSize {
     pub fn new(value: u64) -> Self {
-        return CompactSize{value};
+        CompactSize { value }
         // TODO: Construct a CompactSize from a u64 value
     }
-    
 
     pub fn to_bytes(&self) -> Vec<u8> {
         match self.value {
@@ -29,7 +28,7 @@ impl CompactSize {
                 bytes.extend_from_slice(&(self.value as u16).to_le_bytes());
                 bytes
             }
-            
+
             65536..=4294967295 => {
                 let mut bytes = vec![0xFE];
                 bytes.extend_from_slice(&(self.value as u32).to_le_bytes());
@@ -55,9 +54,7 @@ impl CompactSize {
         }
 
         match bytes[0] {
-            0x00..=0xFC => {
-                Ok((CompactSize::new(bytes[0] as u64), 1))
-            }
+            0x00..=0xFC => Ok((CompactSize::new(bytes[0] as u64), 1)),
 
             0xFD => {
                 if bytes.len() < 3 {
@@ -67,13 +64,13 @@ impl CompactSize {
                 if value < 0xFD {
                     return Err(BitcoinError::InvalidFormat);
                 }
-                
+
                 Ok((CompactSize::new(value), 3))
             }
 
             0xFE => {
                 if bytes.len() < 5 {
-                    return Err(BitcoinError:: InsufficientBytes);
+                    return Err(BitcoinError::InsufficientBytes);
                 }
                 let value = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as u64;
                 if value < 65536 {
@@ -87,7 +84,7 @@ impl CompactSize {
                     return Err(BitcoinError::InsufficientBytes);
                 }
                 let value = u64::from_le_bytes([
-                    bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8]
+                    bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
                 ]);
                 if value < 4294967296 {
                     return Err(BitcoinError::InvalidFormat);
@@ -109,7 +106,7 @@ impl Serialize for Txid {
     where
         S: serde::Serializer,
     {
-        let hex_string = hex::encode(&self.0);
+        let hex_string = hex::encode(self.0);
         serializer.serialize_str(&hex_string)
         // TODO: Serialize as a hex-encoded string (32 bytes => 64 hex characters)
     }
@@ -137,7 +134,6 @@ impl<'de> Deserialize<'de> for Txid {
         Ok(Txid(array))
         // TODO: Parse hex string into 32-byte array
         // Use `hex::decode`, validate length = 32
-        
     }
 }
 
@@ -153,40 +149,37 @@ impl OutPoint {
             txid: Txid(txid),
             vout,
         }
-       
+
         // TODO: Create an OutPoint from raw txid bytes and output index
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(36);   
-    
-        bytes.extend_from_slice(&self.txid.0);   
-  
+        let mut bytes = Vec::with_capacity(36);
+
+        bytes.extend_from_slice(&self.txid.0);
+
         bytes.extend_from_slice(&self.vout.to_le_bytes());
-    
+
         bytes
         // TODO: Serialize as: txid (32 bytes) + vout (4 bytes, little-endian)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
         if bytes.len() < 36 {
-        return Err(BitcoinError::InsufficientBytes)
-          
-    }
-    let mut txid = [0u8; 32];
-    txid.copy_from_slice(&bytes[0..32]);
+            return Err(BitcoinError::InsufficientBytes);
+        }
+        let mut txid = [0u8; 32];
+        txid.copy_from_slice(&bytes[0..32]);
 
-    let vout_bytes = &bytes[32..36];
-    let vout = u32::from_le_bytes([
-        vout_bytes[0],
-        vout_bytes[1], 
-        vout_bytes[2],
-        vout_bytes[3]
-    ]);
-    
-    let outpoint = Self { txid:Txid(txid), vout };
-    Ok((outpoint, 36))
-    
+        let vout_bytes = &bytes[32..36];
+        let vout = u32::from_le_bytes([vout_bytes[0], vout_bytes[1], vout_bytes[2], vout_bytes[3]]);
+
+        let outpoint = Self {
+            txid: Txid(txid),
+            vout,
+        };
+        Ok((outpoint, 36))
+
         // TODO: Deserialize 36 bytes: txid[0..32], vout[32..36]
         // Return error if insufficient bytes
     }
@@ -199,18 +192,16 @@ pub struct Script {
 
 impl Script {
     pub fn new(bytes: Vec<u8>) -> Self {
-        Self{
-            bytes
-        }
+        Self { bytes }
         // TODO: Simple constructor
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-         let mut result = Vec::new();
-         let length = CompactSize::new(self.bytes.len() as u64);
-         result.extend_from_slice(&length.to_bytes());
-         result.extend_from_slice(&self.bytes);
-         result
+        let mut result = Vec::new();
+        let length = CompactSize::new(self.bytes.len() as u64);
+        result.extend_from_slice(&length.to_bytes());
+        result.extend_from_slice(&self.bytes);
+        result
         // TODO: Prefix with CompactSize (length), then raw bytes
     }
 
@@ -251,7 +242,7 @@ impl TransactionInput {
         Self {
             previous_output,
             script_sig,
-            sequence
+            sequence,
         }
         // TODO: Basic constructor
     }
@@ -288,7 +279,7 @@ impl TransactionInput {
 
         let input = TransactionInput::new(previous_output, script_sig, sequence);
         Ok((input, offset))
-     
+
         // TODO: Deserialize in order:
         // - OutPoint (36 bytes)
         // - Script (with CompactSize)
@@ -308,13 +299,12 @@ impl BitcoinTransaction {
         Self {
             version,
             inputs,
-            lock_time
+            lock_time,
         }
         // TODO: Construct a transaction from parts
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.version.to_le_bytes());
 
@@ -377,20 +367,31 @@ impl fmt::Display for BitcoinTransaction {
         writeln!(f, "Bitcoin Transaction:")?;
         writeln!(f, "  Version: {}", self.version)?;
         writeln!(f, "  Inputs ({}):", self.inputs.len())?;
-        
+
         for (i, input) in self.inputs.iter().enumerate() {
             writeln!(f, "    Input {}:", i)?;
             writeln!(f, "      Previous Output:")?;
-            writeln!(f, "        TXID: {}", hex::encode(&input.previous_output.txid.0))?;
-            writeln!(f, "        Previous Output Vout: {}", input.previous_output.vout)?;
-            writeln!(f, "      Script Sig ({} bytes): {}", 
-                input.script_sig.bytes.len(), 
-                hex::encode(&input.script_sig.bytes))?;
+            writeln!(
+                f,
+                "        TXID: {}",
+                hex::encode(input.previous_output.txid.0)
+            )?;
+            writeln!(
+                f,
+                "        Previous Output Vout: {}",
+                input.previous_output.vout
+            )?;
+            writeln!(
+                f,
+                "      Script Sig ({} bytes): {}",
+                input.script_sig.bytes.len(),
+                hex::encode(&input.script_sig.bytes)
+            )?;
             writeln!(f, "      Sequence: 0x{:08x}", input.sequence)?;
         }
-        
+
         writeln!(f, "  Lock Time: {}", self.lock_time)?;
-        
+
         Ok(())
         // TODO: Format a user-friendly string showing version, inputs, lock_time
         // Display scriptSig length and bytes, and previous output info
